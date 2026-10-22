@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes to the Proofline Swift SDK. The project follows [Semantic Versioning](https://semver.org).
+
+## 0.1.0 (unreleased)
+
+### Added
+
+- `Proofline.configure(appKey:options:)`. It takes a publishable key (`pk_test_…`/`pk_live_…`), and `ProoflineOptions` lets you inject every dependency: transport, URL opener, storage directory, App Group, `appTransactionID` provider, RevenueCat bridge, automatic flush and request timeout.
+- `Proofline.handle(_:)` for a URL or an `NSUserActivity` (universal links). It queues a session event that carries the click id, once per click id. Links handled before `configure` are buffered.
+- `Proofline.identify(userID:revenueCatAppUserID:appTransactionID:)`. It returns the end-user UUID to pass as the StoreKit `appAccountToken`. Offline it returns the last known id and queues the call. It throws only `ProoflineError`. `Proofline.appAccountToken(...)` is the non-throwing variant.
+- `Proofline.submitCode(_:pasted:openRedemption:)`. For Apple offer codes it opens Apple's redemption URL. When offline it returns `.queued`.
+- `Proofline.confirmCreator(_:)`, `currentAttribution()` (cached for 60 s, with an offline fallback), `remoteConfig()` and `flush()`.
+- `Proofline.syncToRevenueCat` takes a closure, a `RevenueCatAttributeSink` or the sink set in the options. It writes all six `proofline_*` subscriber attributes, with `""` (RevenueCat: delete) for values that are not known, so a previous creator's code or handle is cleared.
+- App Clip handoff: `ProoflineAppClip.storeHandoff(from:appGroupIdentifier:)` in the clip, with `ProoflineOptions.appGroupIdentifier` or `Proofline.setAppClipClickID(_:)` in the app.
+- SwiftUI `PasteCodeButton`, which uses `UIPasteControl` on iOS 16+ and falls back to a text field elsewhere, and `CodeEntryField`.
+- A durable offline queue: JSON files in Application Support, atomic writes, idempotent `eventId`s, backoff `min(2^attempts × 5 s, 1 h)` over the failed attempts so far (5 s, 10 s, 20 s, … as in sdk-js), at most 200 events, 25 attempts and 30 days. A state file that exists but cannot be read (for example before the first unlock) is not treated as a first launch: the process uses a temporary install id, writes nothing, and switches to the stored identity once the file can be read.
+- Remote kill switch. It is triggered by `config.enabled == false` or HTTP 403. The SDK then stops sending, drops its queue and re-checks `/config` every 5 minutes. A 401 stops the SDK for the rest of the process.
+- A privacy manifest: no tracking and no tracking domains. Purchase history, user ID and product interaction are declared as linked and not used for tracking. The SDK uses no required-reason APIs.
