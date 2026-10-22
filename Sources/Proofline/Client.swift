@@ -367,16 +367,23 @@ actor ProoflineClient {
         }
     }
 
-    /// Writes the attribution into RevenueCat subscriber attributes: all six `proofline_*` keys, with
-    /// `""` (RevenueCat: delete) for values that are not known, so values left over from an earlier
-    /// attribution or end user are cleared. Nothing is written while neither the end user nor an
+    /// Writes the attribution into RevenueCat subscriber attributes: every creator-scoped
+    /// `proofline_*` key, with `""` (RevenueCat: delete) for values that are not known, so values
+    /// left over from an earlier attribution are cleared. The end-user key is written only when the
+    /// end user is known (never deleted). Nothing is written while neither the end user nor an
     /// attribution is known. Returns the non-empty values written (sdk-js `syncToRevenueCat`).
     func syncToRevenueCat(_ write: @Sendable ([String: String]) async -> Void) async -> [String: String] {
         let attribution = await currentAttribution()
         guard isActive else { return [:] }
         let endUserID = state.endUserId
         let attrs = RevenueCatAttributes.attributes(for: attribution, endUserID: endUserID)
-        if !attrs.isEmpty { await write(RevenueCatAttributes.update(for: attribution, endUserID: endUserID)) }
+        guard !attrs.isEmpty else { return attrs }
+        var update = RevenueCatAttributes.update(for: attribution, endUserID: endUserID)
+        // An unknown end user (e.g. storage unreadable this launch) is not "no end user": never
+        // clear RevenueCat's end-user link, which ingest uses to tie purchases to the end user.
+        // Same rule as sdk-js `revenueCatAttributeUpdate`.
+        if attrs[RevenueCatAttributes.endUserId] == nil { update.removeValue(forKey: RevenueCatAttributes.endUserId) }
+        await write(update)
         return attrs
     }
 
@@ -629,6 +636,10 @@ actor ProoflineClient {
         if configFetchedAt != nil {
             state.config = temporary.config
             state.disabled = temporary.disabled
+        } else if temporary.disabled {
+            // A kill switch learned from a 403 (session, identify, code, confirm) while storage was
+            // unreadable sets no `configFetchedAt`, but it is still newer than what is on disk.
+            state.disabled = true
         }
         attributionFetchedAt = nil
         if state.disabled {

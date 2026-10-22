@@ -113,7 +113,7 @@ final class ClientIdentifyOrderingTests: XCTestCase {
         // identify(B) must not be served A's id from the cache.
         let b = try await h.client.identify(userID: "B", revenueCatAppUserID: nil, appTransactionID: nil)
         XCTAssertEqual(b, UUID(uuidString: Fixture.otherEndUserID))
-        // ...and identify(A) is now the cached one.
+        // ...and identify(B), just applied, is now the cached one: repeating it sends nothing.
         await h.transport.reset()
         _ = try await h.client.identify(userID: "B", revenueCatAppUserID: nil, appTransactionID: nil)
         let cached = await h.transport.requests(to: "identify").count
@@ -433,6 +433,59 @@ final class ClientStorageReadFailureTests: XCTestCase {
         XCTAssertEqual(session.endUserId, Fixture.endUserID)
         XCTAssertFalse(session.firstLaunch)
         XCTAssertEqual(try persistedState(store).installId, "11111111-2222-4333-8444-555555555555")
+    }
+
+    func testAKillSwitchLearnedWhileStorageWasUnreadableSurvivesTheRecovery() async throws {
+        // Regression: a 403 while storage was unreadable did not set configFetchedAt, so the
+        // recovery restored `disabled: false` from disk and flushed the stored queue again.
+        let store = try seededStore()
+        // A queued event on disk from an earlier, offline launch.
+        let earlier = Harness(store: store)
+        await earlier.transport.set(override: .failure(.notConnectedToInternet))
+        _ = try? await earlier.client.identify(userID: "u_1", revenueCatAppUserID: nil, appTransactionID: nil)
+        XCTAssertFalse(try persistedQueue(store).isEmpty)
+
+        store.failAllReads()
+        let h = earlier.relaunch()
+        await h.transport.set(override: .status(403, Data(#"{"error":{"code":"sdk_disabled","message":"off"}}"#.utf8)))
+        await h.client.start()
+        XCTAssertTrue(h.client.haltFlag.isDisabled)
+
+        // The device is unlocked and the server answers again; nothing re-enabled the SDK.
+        store.heal()
+        await h.transport.set(override: nil)
+        await h.transport.reset()
+        h.clock.advance(60)
+        let installID = await h.client.installID
+        XCTAssertEqual(installID, "11111111-2222-4333-8444-555555555555", "storage was adopted")
+        XCTAssertTrue(h.client.haltFlag.isDisabled)
+        let delivered = await h.client.flush()
+        XCTAssertEqual(delivered, 0)
+        let requests = await h.transport.requests
+        XCTAssertTrue(requests.isEmpty, "a disabled SDK sends nothing")
+        XCTAssertTrue(try persistedState(store).disabled)
+        XCTAssertTrue(try persistedQueue(store).isEmpty)
+    }
+
+    func testSyncToRevenueCatNeverClearsAnUnknownEndUser() async throws {
+        // Storage unreadable this launch and the session cannot be sent, so the end user is
+        // unknown; a confirmed creator still gives an attribution. The end-user key must be left
+        // alone, not deleted ("").
+        let store = try seededStore()
+        store.failAllReads()
+        let h = Harness(store: store)
+        await h.transport.set("session", .failure(.notConnectedToInternet))
+        await h.client.start()
+        let confirmed = await h.client.confirmCreator(Fixture.attribution.creator.id)
+        XCTAssertTrue(confirmed)
+        let endUser = await h.client.endUserID
+        XCTAssertNil(endUser)
+        let written = LockedBox<[String: String]>()
+        let returned = await h.client.syncToRevenueCat { written.set($0) }
+        let update = try XCTUnwrap(written.value)
+        XCTAssertNil(update[RevenueCatAttributes.endUserId], "never cleared")
+        XCTAssertEqual(update[RevenueCatAttributes.creatorId], Fixture.attribution.creator.id)
+        XCTAssertNil(returned[RevenueCatAttributes.endUserId])
     }
 
     func testFileStoreReportsMissingAsNilAndOtherFailuresAsErrors() throws {
