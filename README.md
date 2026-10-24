@@ -5,8 +5,8 @@ Creator attribution for iOS subscription apps. The SDK supports iOS 15+ (macOS 1
 ```swift
 import Proofline
 
-// At launch
-Proofline.configure(appKey: "pk_live_…")
+// At launch. baseURL is your Proofline platform (PLATFORM_URL; the app's Setup page shows it).
+Proofline.configure(appKey: "pk_live_…", baseURL: URL(string: "https://your-proofline-platform.example")!)
 
 // Universal links: .onOpenURL { Proofline.handle($0) } or .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { Proofline.handle($0) }
 Proofline.handle(url)
@@ -30,7 +30,9 @@ await Proofline.syncToRevenueCat { Purchases.shared.attribution.setAttributes($0
 
 `ProoflineOptions` takes the following settings:
 
-- `baseURL`
+- `baseURL`: your Proofline platform URL (`PLATFORM_URL`; the app's Setup page in the dashboard shows
+  a ready snippet). Set it: the built-in `Proofline.defaultBaseURL` is a placeholder until the hosted
+  domain is final, and since calls never crash, an app without the right `baseURL` records nothing.
 - `debug`: logs through `os.Logger`. It never logs keys or ids.
 - `platform` and `appVersion`
 - `transport`, `urlOpener` and `storageDirectory`, for tests or custom stacks
