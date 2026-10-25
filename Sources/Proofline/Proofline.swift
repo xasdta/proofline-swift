@@ -17,7 +17,7 @@ import Foundation
 public enum Proofline {
     public static let sdkVersion = "0.1.0"
     // A literal URL; it cannot fail to parse.
-    public static let defaultBaseURL = URL(string: "https://app.proofline.dev")!
+    public static let defaultBaseURL = URL(string: "https://app.proofline.link")!
 
     static let registry = ClientRegistry()
 

@@ -12,7 +12,7 @@ import StoreKit
 /// Settings for `Proofline.configure(appKey:options:)`. Every dependency is injectable so the SDK
 /// can be tested without a network, a UI or StoreKit.
 public struct ProoflineOptions: Sendable {
-    /// Platform base URL; default `https://app.proofline.dev`.
+    /// Platform base URL; default `https://app.proofline.link`.
     public var baseURL: URL
     /// Log diagnostics through `os.Logger` (subsystem `dev.proofline.sdk`). Never logs keys or ids.
     public var debug: Bool
