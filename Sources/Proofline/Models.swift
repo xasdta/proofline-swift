@@ -47,19 +47,28 @@ public struct Attribution: Codable, Sendable, Equatable {
     public let offerLabel: String?
     /// Code the user can see/redeem, if any.
     public let code: String?
+    /// Where this device redeems `code` (its own store only), as in the `/code` answer; absent for
+    /// in-app codes and other stores' codes. See `redemptionURL`.
+    public let redemptionUrl: String?
     /// ISO 8601.
     public let decidedAt: String
 
     public init(creator: CreatorSummary, programId: String, tier: Tier, status: Status,
-                offerLabel: String? = nil, code: String? = nil, decidedAt: String) {
+                offerLabel: String? = nil, code: String? = nil, redemptionUrl: String? = nil,
+                decidedAt: String) {
         self.creator = creator
         self.programId = programId
         self.tier = tier
         self.status = status
         self.offerLabel = offerLabel
         self.code = code
+        self.redemptionUrl = redemptionUrl
         self.decidedAt = decidedAt
     }
+
+    /// `redemptionUrl` as a URL: open it (for example with `UIApplication.open`) to show the store's
+    /// redemption flow for `code` from the paywall.
+    public var redemptionURL: URL? { redemptionUrl.flatMap(URL.init(string:)) }
 }
 
 /// Remote settings and kill switch (`GET /api/sdk/v1/config`, also embedded in the session response).

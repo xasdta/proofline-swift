@@ -57,6 +57,18 @@ final class HelpersTests: XCTestCase {
         XCTAssertNil(ProoflineInput.normalizeCode(" \t\n "))
     }
 
+    /// zod's `.max()` and sdk-js count UTF-16 code units; Swift's `count` counts characters, so a
+    /// value of emoji passed the old check and the server rejected the request.
+    func testLengthLimitsCountUTF16CodeUnitsLikeTheServer() throws {
+        let emoji = String(repeating: "😀", count: 33) // 33 characters, 66 UTF-16 units
+        XCTAssertNil(ProoflineInput.normalizeCode(emoji))
+        XCTAssertEqual(ProoflineInput.normalizeCode(String(repeating: "😀", count: 32)), String(repeating: "😀", count: 32))
+        XCTAssertThrowsError(try ProoflineInput.optionalID(String(repeating: "é", count: 200) + String(repeating: "😀", count: 40),
+                                                           limit: ProoflineInput.maxUserIDLength, field: "userID"))
+        XCTAssertEqual(try ProoflineInput.optionalID(String(repeating: "😀", count: 128),
+                                                     limit: ProoflineInput.maxUserIDLength, field: "userID")?.utf16.count, 256)
+    }
+
     func testISOTimeMatchesTheJSFormat() {
         let date = Date(timeIntervalSince1970: 1_792_000_000.123)
         let s = ISOTime.string(date)

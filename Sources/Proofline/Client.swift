@@ -88,6 +88,11 @@ actor ProoflineClient {
     private var storageUnavailable = false
     /// True once a session event was delivered in this process (sdk-js `sessionDelivered`).
     private var sessionDelivered = false
+    /// This process created the install id (the first launch after install). Every session it
+    /// queues carries `firstLaunch`, as sdk-js `rt.firstLaunch` does, so a universal link that
+    /// opened the app for the first time is a post-install link (an install in the link's stats)
+    /// even when the launch session was queued before it.
+    private var firstLaunchProcess = false
     /// Identify ordering (sdk-js `identifySeq` / `identifyApplied` / `identifyIssued`): every
     /// identify sent or queued in this process gets the next sequence number, and an answer is applied
     /// only when no newer identify was applied before it. Identifies queued by an earlier process are
@@ -616,6 +621,7 @@ actor ProoflineClient {
         } else {
             // First launch, or a corrupt file: start over with a fresh random install id.
             state = PersistedState(installId: newID())
+            firstLaunchProcess = true
             saveState()
         }
         queue = OfflineQueue(events: stored.events)
@@ -654,11 +660,11 @@ actor ProoflineClient {
 
     private func enqueueSession(linkClickID: String?, linkURL: String?, appClipClickID: String?,
                                 appTransactionID: String?) {
-        let appVersion = env.appVersion.flatMap { $0.isEmpty || $0.count > 64 ? nil : $0 }
+        let appVersion = env.appVersion.flatMap { $0.isEmpty || $0.utf16.count > 64 ? nil : $0 }
         let request = SessionRequest(
             eventId: newID(), installId: state.installId, endUserId: state.endUserId, platform: env.platform,
             sdkVersion: env.sdkVersion, appVersion: appVersion, openedAt: ISOTime.string(env.now()),
-            firstLaunch: !state.sessionRecorded, installReferrer: nil, appClipClickId: appClipClickID,
+            firstLaunch: firstLaunchProcess || !state.sessionRecorded, installReferrer: nil, appClipClickId: appClipClickID,
             linkClickId: linkClickID, linkUrl: linkURL, appTransactionId: appTransactionID
         )
         queue.enqueue(.session(request), now: env.now())

@@ -44,7 +44,7 @@ await Proofline.syncToRevenueCat { Purchases.shared.attribution.setAttributes($0
 ## Behaviour
 
 - **Offline queue.** Session, identify, code and confirm events are written to Application Support with atomic JSON writes. They are retried with backoff `min(2^attempts × 5 s, 1 h)` (first retry after 5 s, dropped after 25 attempts) and keep the same `eventId`, so the server can deduplicate them. Each pass sends at most `config.batchSize` events.
-- **Kill switch.** The SDK disables itself when `config.enabled` is false or the server answers 403. It then stops sending, drops its queue and re-checks `/config` every 5 minutes.
+- **Kill switch.** The SDK disables itself when `config.enabled` is false or the server answers 403 with its `{ error: { code, message } }` body. It then stops sending, drops its queue and re-checks `/config` every 5 minutes. A 403 without that body (a CDN or firewall page) is retried with backoff instead.
 - **Privacy.** There is no IDFA and no fingerprinting. `installId` is a random UUID. See `Sources/Proofline/Resources/PrivacyInfo.xcprivacy`.
 
 ## Development

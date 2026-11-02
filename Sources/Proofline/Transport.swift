@@ -127,7 +127,10 @@ struct APIClient: Sendable {
         let body = try? JSONDecoder().decode(ApiErrorBody.self, from: data)
         switch status {
         case 401: return .invalidAppKey
-        case 403: return .disabled
+        // The kill switch drops the queue and persists, so only Proofline's own 403 (with the error
+        // envelope) trips it. A bare 403 came from something in between, e.g. a CDN or firewall
+        // page: it maps to `.api(403, "http_403", …)`, which is retried (sdk-js `classifyFailure`).
+        case 403 where body != nil: return .disabled
         default:
             return .api(status: status, code: body?.error.code ?? "http_\(status)",
                         message: body?.error.message ?? "HTTP \(status)")
@@ -141,7 +144,7 @@ enum DeliveryFailure: Equatable {
     case retry
     /// 401: the key is wrong; stop sending for this process (the queue is kept for a fixed build).
     case invalidKey
-    /// 403: remote kill switch.
+    /// 403 with Proofline's error body: remote kill switch.
     case disabled
     /// Other 4xx or an unusable 2xx body: the event can never succeed; drop it.
     case drop
@@ -152,7 +155,8 @@ enum DeliveryFailure: Equatable {
         case .invalidAppKey: self = .invalidKey
         case .disabled: self = .disabled
         case let .api(status, _, _):
-            self = (status >= 500 || status == 408 || status == 425 || status == 429) ? .retry : .drop
+            // A 403 reaching here had no Proofline error body (a CDN or firewall page): retry it.
+            self = (status >= 500 || status == 403 || status == 408 || status == 425 || status == 429) ? .retry : .drop
         case .invalidResponse, .invalidInput, .notConfigured: self = .drop
         }
     }

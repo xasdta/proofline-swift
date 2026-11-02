@@ -102,6 +102,44 @@ final class ClientSessionTests: XCTestCase {
         XCTAssertTrue(body.firstLaunch, "the first session event carries firstLaunch, whichever sends it")
     }
 
+    /// `configure` starts the client before `onOpenURL` delivers the link, so on the first launch the
+    /// launch session is usually queued first. The link session must still say `firstLaunch` (the
+    /// server types it `post_install_link` and counts the install); on a relaunch it must not.
+    func testLinkThatOpensTheAppOnTheFirstLaunchIsAPostInstallLinkAfterTheLaunchSession() async throws {
+        let h = Harness()
+        await h.client.start()
+        await h.client.recordLinkOpen(clickID: Fixture.clickID, url: Fixture.linkURL)
+        let sessions = try await h.transport.requests(to: "session").map { try $0.decode(SessionRequest.self) }
+        XCTAssertEqual(sessions.count, 2)
+        let link = try XCTUnwrap(sessions.first { $0.linkClickId == Fixture.clickID })
+        XCTAssertTrue(link.firstLaunch)
+
+        await h.transport.reset()
+        let relaunched = h.relaunch()
+        await relaunched.client.start()
+        await relaunched.client.recordLinkOpen(clickID: "Zy9xW8vU7tS6", url: URL(string: "https://go.example.com/l/fit/sarah/c/Zy9xW8vU7tS6")!)
+        let later = try await h.transport.requests(to: "session").map { try $0.decode(SessionRequest.self) }
+        XCTAssertEqual(later.count, 2)
+        XCTAssertTrue(later.allSatisfy { !$0.firstLaunch })
+    }
+
+    /// The server caps `appVersion` at 64 UTF-16 units and rejects the whole session (with its click
+    /// id) when it is longer, so an over-long version is left out instead.
+    func testAppVersionOverTheServersUTF16LimitIsOmitted() async throws {
+        let env = ClientEnvironment(
+            api: APIClient(appKey: Fixture.appKey, baseURL: URL(string: "https://platform.test")!,
+                           transport: MockTransport(), timeout: 5),
+            store: MemoryStore(), opener: RecordingOpener(), now: { Date() }, makeUUID: { UUID() },
+            appGroupDirectory: { nil }, appTransactionIDProvider: nil, revenueCat: nil, platform: .ios,
+            appVersion: "1.0 " + String(repeating: "🚀", count: 31), // 35 characters, 66 UTF-16 units
+            sdkVersion: Proofline.sdkVersion, automaticFlush: false, log: ProoflineLog(enabled: false))
+        let transport = try XCTUnwrap(env.api.transport as? MockTransport)
+        let client = ProoflineClient(appKey: Fixture.appKey, environment: env)
+        await client.start()
+        let body = try await transport.firstRequest(to: "session").decode(SessionRequest.self)
+        XCTAssertNil(body.appVersion)
+    }
+
     func testSessionWithoutOptionalFieldsOmitsThemFromJSON() async throws {
         let h = Harness()
         await h.client.start()
@@ -508,6 +546,31 @@ final class ClientKillSwitchTests: XCTestCase {
         XCTAssertTrue(try persistedState(h.store).disabled)
         await h.transport.set(override: nil)
         await assertQuiet(h)
+    }
+
+    /// The kill switch drops the queue and persists, so a 403 that is not Proofline's (no error
+    /// envelope: a CDN or firewall page) must not trip it: the event is kept and retried.
+    func testBare403WithoutTheErrorBodyIsRetriedAndKeepsTheQueue() async throws {
+        let h = Harness()
+        await h.transport.set(override: .status(403, Data("<html>Forbidden</html>".utf8)))
+        await h.client.start()
+        XCTAssertFalse(try persistedState(h.store).disabled)
+        let queued = try persistedQueue(h.store)
+        XCTAssertEqual(queued.count, 1)
+        XCTAssertEqual(queued.first?.attempts, 1)
+        let active = await h.client.isActive
+        XCTAssertTrue(active)
+
+        // The block lifts: the same event is delivered after its backoff.
+        await h.transport.set(override: nil)
+        await h.transport.reset()
+        h.clock.advance(OfflineQueue.backoff(attempts: 0) + 1)
+        let delivered = await h.client.flush()
+        XCTAssertEqual(delivered, 1)
+        let sent = try await h.transport.firstRequest(to: "session").decode(SessionRequest.self)
+        XCTAssertEqual(sent.eventId, queued.first?.id)
+        let count = await h.client.queuedEventCount
+        XCTAssertEqual(count, 0)
     }
 
     func testDisabledSDKRechecksConfigOnTheNextLaunch() async throws {

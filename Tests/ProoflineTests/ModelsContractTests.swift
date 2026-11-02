@@ -190,6 +190,18 @@ final class ModelsContractTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ApiErrorBody.self, from: Data(error.utf8)).error.code, "rate_limited")
     }
 
+    /// The server's `currentAttributionSchema` carries `redemptionUrl` (the code's store redemption
+    /// link for this device); it was dropped on decode, so a paywall could not open it.
+    func testAttributionKeepsTheServersRedemptionURL() throws {
+        let body = #"{"attribution":{"creator":{"id":"c","name":"Sarah"},"programId":"p","tier":"D","status":"provisional","code":"SARAH20","redemptionUrl":"\#(Fixture.appleRedemption)","decidedAt":"2026-10-14T09:13:00.000Z"}}"#
+        let attribution = try XCTUnwrap(try JSONDecoder().decode(AttributionResponse.self, from: Data(body.utf8)).attribution)
+        XCTAssertEqual(attribution.redemptionUrl, Fixture.appleRedemption)
+        XCTAssertEqual(attribution.redemptionURL, URL(string: Fixture.appleRedemption))
+        XCTAssertTrue(ProoflineLinks.isAppleOfferCodeRedemption(try XCTUnwrap(attribution.redemptionURL)))
+        let inApp = #"{"creator":{"id":"c","name":"Sarah"},"programId":"p","tier":"U","status":"provisional","code":"SARAH20","decidedAt":"2026-10-14T09:13:00.000Z"}"#
+        XCTAssertNil(try JSONDecoder().decode(Attribution.self, from: Data(inApp.utf8)).redemptionURL)
+    }
+
     func testCodeResultFromResponseParsesTheRedemptionURL() {
         XCTAssertEqual(CodeResult(.accepted(creator: Fixture.creator, redemptionUrl: Fixture.appleRedemption, offerLabel: nil)),
                        .accepted(creator: Fixture.creator, redemptionURL: URL(string: Fixture.appleRedemption), offerLabel: nil))

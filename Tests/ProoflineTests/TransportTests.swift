@@ -60,6 +60,8 @@ final class APIClientTests: XCTestCase {
         let cases: [(MockReply, ProoflineError)] = [
             (.status(401, Data()), .invalidAppKey),
             (.status(403, Data(#"{"error":{"code":"sdk_disabled","message":"off"}}"#.utf8)), .disabled),
+            // No Proofline error body: a CDN or firewall answered, not the kill switch.
+            (.status(403, Data("<html>Forbidden</html>".utf8)), .api(status: 403, code: "http_403", message: "HTTP 403")),
             (.status(422, Data(#"{"error":{"code":"invalid_input","message":"bad code"}}"#.utf8)),
              .api(status: 422, code: "invalid_input", message: "bad code")),
             (.status(500, Data("<html>".utf8)), .api(status: 500, code: "http_500", message: "HTTP 500")),
@@ -85,6 +87,8 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(DeliveryFailure(.api(status: 429, code: "", message: "")), .retry)
         XCTAssertEqual(DeliveryFailure(.api(status: 408, code: "", message: "")), .retry)
         XCTAssertEqual(DeliveryFailure(.api(status: 425, code: "", message: "")), .retry)
+        XCTAssertEqual(DeliveryFailure(.api(status: 403, code: "http_403", message: "HTTP 403")), .retry)
+        XCTAssertEqual(DeliveryFailure(.disabled), .disabled)
         XCTAssertEqual(DeliveryFailure(.api(status: 400, code: "", message: "")), .drop)
         XCTAssertEqual(DeliveryFailure(.api(status: 404, code: "", message: "")), .drop)
         XCTAssertEqual(DeliveryFailure(.api(status: 409, code: "", message: "")), .drop)

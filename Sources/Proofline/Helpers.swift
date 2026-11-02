@@ -43,7 +43,8 @@ public enum ProoflineLinks {
 }
 
 /// Client-side input rules. Limits match the server's zod schemas so the SDK never sends a request
-/// that is certain to be rejected.
+/// that is certain to be rejected. Lengths are UTF-16 code units, as zod's `.max()` (and sdk-js
+/// `.length`) count them, not Swift `Character`s.
 enum ProoflineInput {
     static let maxCodeLength = 64
     static let maxUserIDLength = 256
@@ -57,14 +58,14 @@ enum ProoflineInput {
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty }
-        guard let code = firstLine, !code.isEmpty, code.count <= maxCodeLength else { return nil }
+        guard let code = firstLine, !code.isEmpty, code.utf16.count <= maxCodeLength else { return nil }
         return code
     }
 
     /// Empty → nil; over `limit` → throws.
     static func optionalID(_ value: String?, limit: Int, field: String) throws(ProoflineError) -> String? {
         guard let v = value?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
-        guard v.count <= limit else { throw .invalidInput("\(field) is longer than \(limit) characters") }
+        guard v.utf16.count <= limit else { throw .invalidInput("\(field) is longer than \(limit) characters") }
         return v
     }
 }

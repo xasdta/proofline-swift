@@ -18,7 +18,7 @@ enum Fixture {
                                         avatarUrl: "https://cdn.example.com/sarah.png")
     static let attribution = Attribution(creator: creator, programId: "pr_1", tier: .V, status: .attributed,
                                          offerLabel: "20% off your first 3 months", code: "SARAH20",
-                                         decidedAt: "2026-10-14T09:13:00.000Z")
+                                         redemptionUrl: appleRedemption, decidedAt: "2026-10-14T09:13:00.000Z")
 
     static func config(enabled: Bool = true, codeEntry: Bool = true, confirm: Bool = true,
                        batchSize: Int = 20, flushInterval: Int = 30) -> SdkConfig {
