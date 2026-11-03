@@ -112,6 +112,17 @@ public enum Proofline {
         return await client.confirmCreator(creatorID)
     }
 
+    /// Creators for a "Who sent you?" prompt, matching what the user typed so far (a handle or name
+    /// prefix; a leading `@` is ignored; `""` lists the top creators). At most 5, ranked by aggregate
+    /// data only; pass the chosen creator's `id` to `confirmCreator(_:)`. A read, so nothing is queued:
+    /// `[]` when nothing matches, the prompt is off (`SdkConfig.confirmCreatorEnabled`), the query is
+    /// over 50 characters, the SDK is disabled or not configured, or the request fails (including
+    /// when the calling task is cancelled).
+    public static func suggestCreators(_ query: String = "") async -> [CreatorSummary] {
+        guard let client = registry.client else { return [] }
+        return await client.suggestCreators(query)
+    }
+
     /// Current attribution for paywall copy; the last known one when offline; nil if none or unknown.
     public static func currentAttribution() async -> Attribution? {
         guard let client = registry.client else { return nil }

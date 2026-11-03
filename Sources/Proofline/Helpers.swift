@@ -50,6 +50,8 @@ enum ProoflineInput {
     static let maxUserIDLength = 256
     static let maxAppTransactionIDLength = 128
     static let maxLinkURLLength = 2048
+    /// The server's `suggestQuerySchema.q` limit.
+    static let maxSuggestQueryLength = 50
 
     /// Trimmed code; for pasted text only the first non-empty line is used. Nil when empty or longer
     /// than 64 characters. The server upper-cases; the SDK keeps the user's casing.
@@ -60,6 +62,16 @@ enum ProoflineInput {
             .first { !$0.isEmpty }
         guard let code = firstLine, !code.isEmpty, code.utf16.count <= maxCodeLength else { return nil }
         return code
+    }
+
+    /// The `q` for `/creators/suggest`: trimmed, without leading `@` (the server ignores it). Nil when
+    /// longer than the server accepts or holding a NUL, which the server cannot match.
+    static func suggestQuery(_ raw: String) -> String? {
+        var query = Substring(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        while query.hasPrefix("@") { query = query.dropFirst() }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.utf16.count <= maxSuggestQueryLength, !trimmed.unicodeScalars.contains("\u{0}") else { return nil }
+        return trimmed
     }
 
     /// Empty → nil; over `limit` → throws.

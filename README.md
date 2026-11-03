@@ -22,6 +22,10 @@ PasteCodeButton { result in /* update the paywall */ }
 // Paywall copy
 let attribution = await Proofline.currentAttribution()   // creator name, avatar, offer label
 
+// "Who sent you?" prompt, when there is no attribution yet
+let creators = await Proofline.suggestCreators(text)     // up to 5 matches for what the user typed
+await Proofline.confirmCreator(picked.id)                // the creator they tapped
+
 // RevenueCat, without a RevenueCat dependency
 await Proofline.syncToRevenueCat { Purchases.shared.attribution.setAttributes($0) }  // "" values clear stale attributes
 ```
@@ -45,7 +49,8 @@ await Proofline.syncToRevenueCat { Purchases.shared.attribution.setAttributes($0
 
 - **Offline queue.** Session, identify, code and confirm events are written to Application Support with atomic JSON writes. They are retried with backoff `min(2^attempts × 5 s, 1 h)` (first retry after 5 s, dropped after 25 attempts) and keep the same `eventId`, so the server can deduplicate them. Each pass sends at most `config.batchSize` events.
 - **Kill switch.** The SDK disables itself when `config.enabled` is false or the server answers 403 with its `{ error: { code, message } }` body. It then stops sending, drops its queue and re-checks `/config` every 5 minutes. A 403 without that body (a CDN or firewall page) is retried with backoff instead.
-- **Privacy.** There is no IDFA and no fingerprinting. `installId` is a random UUID. See `Sources/Proofline/Resources/PrivacyInfo.xcprivacy`.
+- **"Who sent you?" suggestions.** `suggestCreators(_:)` lists active creators in the app's active programs whose handle or name starts with the query, ranked by attributed users and link clicks over the last 30 days. Nothing about the asking user is used, and only `id`, `name`, `handle` and `avatarUrl` come back. It is a read: never queued or retried, and `[]` when nothing matches, the prompt is off (App settings → Creator confirmation prompt), the query is over 50 characters, or the request fails or is cancelled. Requests count towards the SDK rate limit (120 per minute per install), so debounce typing.
+- **Privacy.** There is no IDFA and no fingerprinting. `installId` is a random UUID, declared as a Device ID (linked, not tracking) in `Sources/Proofline/Resources/PrivacyInfo.xcprivacy`. The App Review guide in the docs has the matching App Store Connect answers.
 
 ## Development
 

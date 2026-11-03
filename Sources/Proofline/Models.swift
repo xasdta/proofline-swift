@@ -246,6 +246,12 @@ public struct AttributionResponse: Codable, Sendable, Equatable {
     public let attribution: Attribution?
 }
 
+/// `GET /api/sdk/v1/creators/suggest?q=<prefix>&installId=<uuid>`: candidates for the "Who sent
+/// you?" prompt, at most 5, ranked by aggregate data only. Mirrors `SuggestCreatorsResponse` in sdk-js.
+public struct SuggestCreatorsResponse: Codable, Sendable, Equatable {
+    public let creators: [CreatorSummary]
+}
+
 /// Errors surfaced by `Proofline.identify` (the only throwing public call). Every other public call
 /// maps failures to a documented fallback value.
 public enum ProoflineError: Error, Sendable, Equatable {

@@ -349,6 +349,24 @@ actor ProoflineClient {
         }
     }
 
+    /// "Who sent you?" candidates for what the user typed (sdk-js `suggestCreators`). A read: a failure
+    /// is never queued and returns `[]`; a 401 or the kill switch stops the SDK as for every call.
+    func suggestCreators(_ raw: String) async -> [CreatorSummary] {
+        loadIfNeeded()
+        guard isActive else { return [] }
+        if let config = state.config, !config.confirmCreatorEnabled { return [] }
+        guard let query = ProoflineInput.suggestQuery(raw) else {
+            env.log.debug("suggestCreators: the query is longer than \(ProoflineInput.maxSuggestQueryLength) characters")
+            return []
+        }
+        do throws(ProoflineError) {
+            return try await env.api.suggestCreators(query: query, installID: state.installId).creators
+        } catch {
+            handleInteractiveFailure(error, queueing: nil)
+            return []
+        }
+    }
+
     /// Current attribution from the server; the last known one when offline; nil when disabled.
     func currentAttribution() async -> Attribution? {
         loadIfNeeded()

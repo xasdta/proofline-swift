@@ -26,6 +26,8 @@ final class PrivacyManifestTests: XCTestCase {
         XCTAssertEqual(names, [
             "NSPrivacyCollectedDataTypePurchaseHistory",
             "NSPrivacyCollectedDataTypeUserID",
+            // The random install id: one install on one device, so a device-level ID.
+            "NSPrivacyCollectedDataTypeDeviceID",
             "NSPrivacyCollectedDataTypeProductInteraction",
         ])
         for t in types {

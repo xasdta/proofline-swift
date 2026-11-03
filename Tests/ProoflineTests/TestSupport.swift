@@ -10,12 +10,15 @@ enum Fixture {
     static let otherEndUserID = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
     static let thirdEndUserID = "1e2d3c4b-5a69-4788-9a0b-c1d2e3f4a5b6"
     static let creatorID = "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+    static let secondCreatorID = "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"
     static let clickID = "Ab3dE5gH7jK9"
     static let linkURL = URL(string: "https://go.example.com/l/fit/sarah/c/Ab3dE5gH7jK9")!
     static let appleRedemption = "https://apps.apple.com/redeem?ctx=offercodes&id=1234567890&code=SARAH20"
 
     static let creator = CreatorSummary(id: creatorID, name: "Sarah Lee", handle: "sarahmoves",
                                         avatarUrl: "https://cdn.example.com/sarah.png")
+    /// What the mock `/creators/suggest` answers by default, in ranking order.
+    static let suggestions = [creator, CreatorSummary(id: secondCreatorID, name: "Sam Ortiz")]
     static let attribution = Attribution(creator: creator, programId: "pr_1", tier: .V, status: .attributed,
                                          offerLabel: "20% off your first 3 months", code: "SARAH20",
                                          redemptionUrl: appleRedemption, decidedAt: "2026-10-14T09:13:00.000Z")
@@ -73,6 +76,7 @@ actor MockTransport: ProoflineTransport {
     var confirmResponse = ConfirmResponse(status: .accepted, attribution: Fixture.attribution)
     var attributionResponse = AttributionResponse(attribution: Fixture.attribution)
     var configResponse = Fixture.config()
+    var suggestResponse = SuggestCreatorsResponse(creators: Fixture.suggestions)
     /// Overrides every endpoint when set.
     var override: MockReply?
     /// Per-endpoint override.
@@ -90,6 +94,7 @@ actor MockTransport: ProoflineTransport {
     func set(confirmResponse: ConfirmResponse) { self.confirmResponse = confirmResponse }
     func set(attributionResponse: AttributionResponse) { self.attributionResponse = attributionResponse }
     func set(configResponse: SdkConfig) { self.configResponse = configResponse }
+    func set(suggestResponse: SuggestCreatorsResponse) { self.suggestResponse = suggestResponse }
     func set(delayNanoseconds: UInt64) { self.delayNanoseconds = delayNanoseconds }
     func set(identifyFor userID: String, endUserID: String, delayNanoseconds: UInt64 = 0) {
         identifyByUser[userID] = (endUserID, delayNanoseconds)
@@ -138,6 +143,7 @@ actor MockTransport: ProoflineTransport {
         case "confirm": .ok(Fixture.json(confirmResponse))
         case "attribution": .ok(Fixture.json(attributionResponse))
         case "config": .ok(Fixture.json(configResponse))
+        case "suggest": .ok(Fixture.json(suggestResponse))
         default: .status(404, Data(#"{"error":{"code":"not_found","message":"no route"}}"#.utf8))
         }
     }

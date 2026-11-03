@@ -50,6 +50,26 @@ final class APIClientTests: XCTestCase {
         XCTAssertNil(requests[5].headers["Content-Type"])
     }
 
+    func testSuggestCreatorsPathAndQuery() async throws {
+        let transport = MockTransport()
+        let api = client(transport, base: "https://example.com/proofline/")
+        let response = try await api.suggestCreators(query: "a+b&c d", installID: "i-1")
+        XCTAssertEqual(response.creators, Fixture.suggestions)
+        _ = try await api.suggestCreators(query: "", installID: "i-1")
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map(\.url.path), [
+            "/proofline/api/sdk/v1/creators/suggest", "/proofline/api/sdk/v1/creators/suggest",
+        ])
+        XCTAssertEqual(requests.map(\.method), ["GET", "GET"])
+        XCTAssertEqual(requests[0].query, ["q": "a+b&c d", "installId": "i-1"])
+        let encoded = try XCTUnwrap(URLComponents(url: requests[0].url, resolvingAgainstBaseURL: false)?.percentEncodedQuery)
+        XCTAssertFalse(encoded.contains("+"), "a literal + reaches the server's URLSearchParams as a space")
+        XCTAssertTrue(encoded.hasPrefix("q=a%2Bb%26c%20d&"), encoded)
+        XCTAssertEqual(requests[1].query, ["installId": "i-1"])
+        XCTAssertNil(requests[1].body)
+        XCTAssertNil(requests[1].headers["Content-Type"])
+    }
+
     func testTimeoutIsApplied() {
         let req = client(MockTransport()).request("config", method: "GET")
         XCTAssertEqual(req.timeoutInterval, 7)

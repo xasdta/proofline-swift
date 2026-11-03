@@ -124,6 +124,11 @@ final class ModelsContractTests: XCTestCase {
                           nullableRequired: ["attribution"])
     }
 
+    func testSuggestCreatorsResponse() throws {
+        try assertMirrors("SuggestCreatorsResponse", full: SuggestCreatorsResponse(creators: Fixture.suggestions),
+                          minimal: SuggestCreatorsResponse(creators: []))
+    }
+
     func testQueuedEventMirrorsTheJSShape() throws {
         let body = SessionRequest(eventId: "e1", installId: "i", endUserId: nil, platform: .ios, sdkVersion: "1",
                                   appVersion: nil, openedAt: "t", firstLaunch: true, installReferrer: nil,

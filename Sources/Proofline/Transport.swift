@@ -64,12 +64,21 @@ struct APIClient: Sendable {
         try await get("config", query: [])
     }
 
+    /// `query` is sent as `q` only when non-empty; `installID` selects the per-install rate limit.
+    func suggestCreators(query: String, installID: String) async throws(ProoflineError) -> SuggestCreatorsResponse {
+        var items = query.isEmpty ? [] : [URLQueryItem(name: "q", value: query)]
+        items.append(URLQueryItem(name: "installId", value: installID))
+        return try await get("creators/suggest", query: items)
+    }
+
     // MARK: - Request building
 
     func url(_ endpoint: String, query: [URLQueryItem]) -> URL {
         let url = baseURL.appendingPathComponent(Self.pathPrefix).appendingPathComponent(endpoint)
         guard !query.isEmpty, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         comps.queryItems = query
+        // URLComponents leaves "+" as is, and the server's URLSearchParams reads it as a space.
+        comps.percentEncodedQuery = comps.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         return comps.url ?? url
     }
 

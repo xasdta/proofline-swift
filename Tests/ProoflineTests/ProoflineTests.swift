@@ -23,6 +23,8 @@ final class ProoflineFacadeTests: XCTestCase {
         XCTAssertNil(attr)
         let ok = await Proofline.confirmCreator("cr_1")
         XCTAssertFalse(ok)
+        let suggestions = await Proofline.suggestCreators("sa")
+        XCTAssertEqual(suggestions, [])
         if case .error = await Proofline.submitCode("SARAH20") {} else { XCTFail("expected .error") }
         let synced = await Proofline.syncToRevenueCat { _ in XCTFail("nothing to write") }
         XCTAssertEqual(synced, [:])
@@ -125,6 +127,8 @@ final class ProoflineFacadeTests: XCTestCase {
         let code = try await h.transport.firstRequest(to: "code").decode(CodeRequest.self)
         XCTAssertEqual(code.entry, .pasted)
 
+        let suggested = await Proofline.suggestCreators("sa")
+        XCTAssertEqual(suggested, Fixture.suggestions)
         let confirmed = await Proofline.confirmCreator(Fixture.creatorID)
         XCTAssertTrue(confirmed)
         let attribution = await Proofline.currentAttribution()
