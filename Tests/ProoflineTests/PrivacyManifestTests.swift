@@ -67,7 +67,10 @@ final class PrivacyManifestTests: XCTestCase {
     func testManifestIsBundledAsAResource() throws {
         let package = try String(contentsOf: Self.sourcesURL.deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Package.swift"), encoding: .utf8)
-        XCTAssertTrue(package.contains(#"resources: [.process("Resources/PrivacyInfo.xcprivacy")]"#))
+        // The whole `Resources` directory: the manifest and the localised strings.
+        XCTAssertTrue(package.contains(#"resources: [.process("Resources")]"#))
         XCTAssertNotNil(Bundle.module.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: Self.sourcesURL
+                .appendingPathComponent("Resources/PrivacyInfo.xcprivacy").path))
     }
 }

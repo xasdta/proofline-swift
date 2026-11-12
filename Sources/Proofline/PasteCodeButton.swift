@@ -22,9 +22,18 @@ final class CodeEntryModel: ObservableObject {
         case finished(CodeResult)
     }
 
-    @Published var text = ""
+    @Published var text = "" {
+        didSet {
+            // The shown result described the previous text.
+            if clearsResultOnEdit, text != oldValue, case .finished = phase { phase = .idle }
+        }
+    }
     @Published private(set) var phase: Phase = .idle
 
+    /// The user-facing text (status messages, labels).
+    let strings: ProoflineCodeEntryStrings
+    /// Whether editing the text after a result goes back to idle (`ProoflineCodeEntryView`).
+    private let clearsResultOnEdit: Bool
     private let submitter: CodeSubmitter
     private let onResult: @MainActor (CodeResult) -> Void
     /// Whether the result is announced to VoiceOver (off when the host hides the status line and
@@ -32,10 +41,13 @@ final class CodeEntryModel: ObservableObject {
     private let announcesResult: Bool
     private let announcer: @MainActor (String) -> Void
 
-    init(submitter: @escaping CodeSubmitter, announcesResult: Bool = true,
+    init(submitter: @escaping CodeSubmitter, strings: ProoflineCodeEntryStrings = ProoflineCodeEntryStrings(),
+         announcesResult: Bool = true, clearsResultOnEdit: Bool = false,
          announcer: @escaping @MainActor (String) -> Void = CodeEntryModel.postAccessibilityAnnouncement,
          onResult: @escaping @MainActor (CodeResult) -> Void) {
         self.submitter = submitter
+        self.strings = strings
+        self.clearsResultOnEdit = clearsResultOnEdit
         self.announcesResult = announcesResult
         self.announcer = announcer
         self.onResult = onResult
@@ -91,45 +103,50 @@ final class CodeEntryModel: ObservableObject {
         return result
     }
 
-    var statusMessage: String? {
-        guard case let .finished(result) = phase else { return nil }
-        switch result {
-        case let .accepted(creator, _, offerLabel):
-            if let offerLabel { return "\(offerLabel) from \(creator.name)" }
-            return "Code applied: \(creator.name)"
-        case .unknownCode: return "That code wasn't recognised"
-        case .expired: return "That code has expired"
-        case .exhausted: return "That code has reached its limit"
-        case .revoked: return "That code is no longer valid"
-        case .queued: return "You're offline. The code will be applied when you're back online."
-        case .error: return "Couldn't apply the code. Try again."
+    /// The phase as the public state the views draw.
+    var state: ProoflineCodeEntryState {
+        switch phase {
+        case .idle: return .idle
+        case .submitting: return .submitting
+        case let .finished(result): return ProoflineCodeEntryState(result)
         }
+    }
+
+    /// The message for a finished submission; nil while idle or submitting.
+    var statusMessage: String? {
+        guard case .finished = phase else { return nil }
+        return strings.message(for: state)
     }
 }
 
-/// Text field plus Apply button for a creator code. Works on every platform; it is also the
-/// `PasteCodeButton` fallback before iOS 16.
+/// Text field plus Apply button for a creator code, with the SDK's own styling. Works on every
+/// platform; it is also the `PasteCodeButton` fallback before iOS 16. For a field that takes your
+/// app's styling or layout, use `ProoflineCodeEntryView`.
 public struct CodeEntryField: View {
     @StateObject private var model: CodeEntryModel
-    private let placeholder: String
+    private let placeholder: String?
     private let showsStatus: Bool
 
-    public init(placeholder: String = "Creator code", showsStatus: Bool = true,
+    /// - Parameters:
+    ///   - placeholder: the field's placeholder; `strings.placeholder` when nil.
+    ///   - strings: user-facing text; the localised defaults when omitted.
+    public init(placeholder: String? = nil, showsStatus: Bool = true,
+                strings: ProoflineCodeEntryStrings = ProoflineCodeEntryStrings(),
                 onResult: @escaping @MainActor (CodeResult) -> Void = { _ in }) {
-        _model = StateObject(wrappedValue: CodeEntryModel(submitter: CodeEntryModel.defaultSubmitter,
+        _model = StateObject(wrappedValue: CodeEntryModel(submitter: CodeEntryModel.defaultSubmitter, strings: strings,
                                                           announcesResult: showsStatus, onResult: onResult))
         self.placeholder = placeholder
         self.showsStatus = showsStatus
     }
 
-    init(model: CodeEntryModel, placeholder: String = "Creator code", showsStatus: Bool = true) {
+    init(model: CodeEntryModel, placeholder: String? = nil, showsStatus: Bool = true) {
         _model = StateObject(wrappedValue: model)
         self.placeholder = placeholder
         self.showsStatus = showsStatus
     }
 
     public var body: some View {
-        CodeEntryContent(model: model, placeholder: placeholder, showsStatus: showsStatus)
+        CodeEntryContent(model: model, placeholder: placeholder ?? model.strings.placeholder, showsStatus: showsStatus)
     }
 }
 
@@ -141,8 +158,10 @@ public struct PasteCodeButton: View {
     @StateObject private var model: CodeEntryModel
     private let showsStatus: Bool
 
-    public init(showsStatus: Bool = true, onResult: @escaping @MainActor (CodeResult) -> Void = { _ in }) {
-        _model = StateObject(wrappedValue: CodeEntryModel(submitter: CodeEntryModel.defaultSubmitter,
+    /// - Parameter strings: user-facing text; the localised defaults when omitted.
+    public init(showsStatus: Bool = true, strings: ProoflineCodeEntryStrings = ProoflineCodeEntryStrings(),
+                onResult: @escaping @MainActor (CodeResult) -> Void = { _ in }) {
+        _model = StateObject(wrappedValue: CodeEntryModel(submitter: CodeEntryModel.defaultSubmitter, strings: strings,
                                                           announcesResult: showsStatus, onResult: onResult))
         self.showsStatus = showsStatus
     }
@@ -158,14 +177,14 @@ public struct PasteCodeButton: View {
             VStack(alignment: .leading, spacing: 8) {
                 PasteControl { text in Task { await model.submitPasted(text) } }
                     .disabled(model.isSubmitting)
-                    .accessibilityHint("Pastes a creator code from the clipboard")
+                    .accessibilityHint(Text(model.strings.pasteHint))
                 StatusLine(model: model, showsStatus: showsStatus)
             }
         } else {
-            CodeEntryContent(model: model, placeholder: "Creator code", showsStatus: showsStatus)
+            CodeEntryContent(model: model, placeholder: model.strings.placeholder, showsStatus: showsStatus)
         }
         #else
-        CodeEntryContent(model: model, placeholder: "Creator code", showsStatus: showsStatus)
+        CodeEntryContent(model: model, placeholder: model.strings.placeholder, showsStatus: showsStatus)
         #endif
     }
 }
@@ -182,7 +201,7 @@ struct CodeEntryContent: View {
                     .modifier(CodeFieldStyle())
                     .submitLabel(.done)
                     .onSubmit { Task { await model.submitTyped() } }
-                Button("Apply") { Task { await model.submitTyped() } }
+                Button(model.strings.submit) { Task { await model.submitTyped() } }
                     .disabled(!model.canSubmit)
             }
             StatusLine(model: model, showsStatus: showsStatus)
@@ -197,7 +216,7 @@ struct StatusLine: View {
     var body: some View {
         if model.isSubmitting {
             ProgressView()
-                .accessibilityLabel(Text("Applying code"))
+                .accessibilityLabel(Text(model.strings.submitting))
         } else if showsStatus, let message = model.statusMessage {
             // Read out when it appears by `CodeEntryModel`'s announcement.
             Text(message)

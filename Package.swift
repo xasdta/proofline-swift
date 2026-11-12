@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Proofline",
+    defaultLocalization: "en",
     platforms: [.iOS(.v15), .macOS(.v12)],
     products: [
         .library(name: "Proofline", targets: ["Proofline"]),
@@ -10,7 +11,7 @@ let package = Package(
     targets: [
         .target(
             name: "Proofline",
-            resources: [.process("Resources/PrivacyInfo.xcprivacy")]
+            resources: [.process("Resources")]
         ),
         .testTarget(name: "ProoflineTests", dependencies: ["Proofline"]),
     ]

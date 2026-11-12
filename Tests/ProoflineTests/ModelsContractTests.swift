@@ -19,8 +19,21 @@ final class ModelsContractTests: XCTestCase {
         .appendingPathComponent("packages/sdk-js/src/types.ts")
 
     /// Top-level fields of `export interface <name> { … }` (two-space indented `name?: type;` lines).
+    /// True in the monorepo. False in the standalone mirror of `sdks/swift` (see RELEASING.md), which
+    /// has no `packages/sdk-js` to compare against.
+    static let isMonorepo = FileManager.default.fileExists(
+        atPath: typesURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("pnpm-workspace.yaml").path)
+
+    /// The text of a file in `packages/sdk-js/src`. Skips the calling test in the standalone mirror;
+    /// in the monorepo a missing file is a failure.
+    static func sdkJsSource(_ name: String) throws -> String {
+        try XCTSkipUnless(isMonorepo, "sdk-js contract checks run in the monorepo only")
+        return try String(contentsOf: typesURL.deletingLastPathComponent().appendingPathComponent(name), encoding: .utf8)
+    }
+
     static func tsInterface(_ name: String) throws -> Set<Field> {
-        let source = try String(contentsOf: typesURL, encoding: .utf8)
+        let source = try sdkJsSource("types.ts")
         guard let start = source.range(of: "export interface \(name) {") else {
             throw ParseFailure("interface \(name) not found in types.ts")
         }
@@ -65,7 +78,8 @@ final class ModelsContractTests: XCTestCase {
         XCTAssertEqual(decoded, full, file: file, line: line)
     }
 
-    func testTypesFileIsPresent() {
+    func testTypesFileIsPresent() throws {
+        try XCTSkipUnless(Self.isMonorepo, "sdk-js contract checks run in the monorepo only")
         XCTAssertTrue(FileManager.default.fileExists(atPath: Self.typesURL.path), Self.typesURL.path)
     }
 
@@ -153,7 +167,7 @@ final class ModelsContractTests: XCTestCase {
     }
 
     func testEnumsMatchTheTypeScriptUnions() throws {
-        let source = try String(contentsOf: Self.typesURL, encoding: .utf8)
+        let source = try Self.sdkJsSource("types.ts")
         XCTAssertTrue(source.contains("export type Tier = 'V' | 'D' | 'U';"))
         XCTAssertTrue(source.contains("export type Platform = 'ios' | 'android' | 'web' | 'unknown';"))
         XCTAssertTrue(source.contains("status: 'provisional' | 'attributed' | 'locked';"))

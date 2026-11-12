@@ -72,6 +72,45 @@ final class ProoflineFacadeTests: XCTestCase {
         XCTAssertTrue(Proofline.handle(Fixture.linkURL))
     }
 
+    func testHandleLinkReturnsTheLinkWithItsInAppPath() {
+        XCTAssertNil(Proofline.handleLink(URL(string: "https://example.com/promo?dl=%2Fx")!))
+        XCTAssertNil(Proofline.handleLink(URL(string: "myapp://settings")!))
+        XCTAssertEqual(Proofline.registry.pendingCount, 0)
+
+        let url = URL(string: Fixture.linkURL.absoluteString + "?dl=%2Fworkouts%2F42")!
+        XCTAssertEqual(Proofline.handleLink(url), ProoflineLink(clickID: Fixture.clickID, deepLinkPath: "/workouts/42"))
+        XCTAssertEqual(Proofline.registry.pendingCount, 1, "recorded exactly as handle(_:) records it")
+        XCTAssertEqual(Proofline.handleLink(Fixture.linkURL), ProoflineLink(clickID: Fixture.clickID, deepLinkPath: nil))
+        XCTAssertTrue(Proofline.handle(url))
+        XCTAssertEqual(Proofline.registry.pendingCount, 1, "one click id is buffered once")
+    }
+
+    func testHandleLinkForAUniversalLinkUserActivity() {
+        let activity = NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)
+        activity.webpageURL = URL(string: Fixture.linkURL.absoluteString + "?dl=%2Fplans")!
+        XCTAssertEqual(Proofline.handleLink(activity)?.deepLinkPath, "/plans")
+        let other = NSUserActivity(activityType: "com.example.handoff")
+        other.webpageURL = activity.webpageURL
+        XCTAssertNil(Proofline.handleLink(other))
+        XCTAssertNil(Proofline.handleLink(NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)))
+    }
+
+    func testHandleLinkStillRoutesWhileTheKillSwitchIsOff() async throws {
+        let h = Harness()
+        await h.transport.set(sessionResponse: SessionResponse(endUserId: Fixture.endUserID, attribution: nil,
+                                                                config: Fixture.config(enabled: false)))
+        await h.client.start()
+        Proofline.install(h.client)
+        let before = await h.transport.requests(to: "session").count
+        let url = URL(string: Fixture.linkURL.absoluteString + "?dl=%2Fworkouts%2F42")!
+        XCTAssertEqual(Proofline.handleLink(url)?.deepLinkPath, "/workouts/42",
+                       "routing keeps working when attribution is off")
+        XCTAssertFalse(Proofline.handle(url))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let after = await h.transport.requests(to: "session").count
+        XCTAssertEqual(after, before, "a disabled SDK records nothing")
+    }
+
     func testLinksHandledBeforeConfigureAreReplayed() async throws {
         XCTAssertTrue(Proofline.handle(Fixture.linkURL))
         XCTAssertTrue(Proofline.handle(Fixture.linkURL))

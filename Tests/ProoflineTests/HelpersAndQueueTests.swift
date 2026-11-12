@@ -100,8 +100,9 @@ final class HelpersTests: XCTestCase {
                        ["proofline_creator_id": "c", "proofline_program_id": "p", "proofline_tier": "U"])
     }
 
-    func testRevenueCatUpdateWritesEveryKeyAndClearsUnknownOnes() {
-        // sdk-js `revenueCatAttributeUpdate` uses null; RevenueCat iOS deletes an attribute set to "".
+    func testRevenueCatUpdateClearsCreatorKeysAndNeverTheEndUserKey() {
+        // Identical to sdk-js `revenueCatAttributeUpdate`: "" clears (RevenueCat deletes an attribute
+        // set to an empty string on every platform); the end-user key is written only when known.
         let bare = Attribution(creator: CreatorSummary(id: "c", name: "n"), programId: "p", tier: .U,
                                status: .provisional, decidedAt: "t")
         XCTAssertEqual(RevenueCatAttributes.update(for: bare, endUserID: "eu_1"), [
@@ -113,14 +114,109 @@ final class HelpersTests: XCTestCase {
             "proofline_code": "",
         ])
         let cleared = RevenueCatAttributes.update(for: nil, endUserID: nil)
-        XCTAssertEqual(Set(cleared.keys), Set(RevenueCatAttributes.allKeys))
-        XCTAssertTrue(cleared.values.allSatisfy(\.isEmpty))
+        XCTAssertEqual(Set(cleared.keys), Set(RevenueCatAttributes.creatorScopedKeys))
+        XCTAssertNil(cleared[RevenueCatAttributes.endUserId], "an unknown end user is not cleared")
+        XCTAssertTrue(cleared.values.allSatisfy { $0 == RevenueCatAttributes.clearValue })
+        XCTAssertEqual(RevenueCatAttributes.clearValue, "")
+        XCTAssertEqual(RevenueCatAttributes.update(for: nil, endUserID: "eu_1")[RevenueCatAttributes.endUserId], "eu_1")
         XCTAssertEqual(RevenueCatAttributes.allKeys.count, 6)
+        XCTAssertEqual(Set(RevenueCatAttributes.creatorScopedKeys + [RevenueCatAttributes.endUserId]),
+                       Set(RevenueCatAttributes.allKeys))
+    }
+
+    func testRevenueCatClearValueIsIdenticalToSdkJs() throws {
+        let source = try ModelsContractTests.sdkJsSource("revenuecat.ts")
+        XCTAssertTrue(source.contains("export const REVENUECAT_CLEAR_VALUE = '';"))
+    }
+
+    func testOfflineQueueCapIsIdenticalToSdkJs() throws {
+        let source = try ModelsContractTests.sdkJsSource("queue.ts")
+        XCTAssertTrue(source.contains("export const DEFAULT_MAX_QUEUE_SIZE = \(OfflineQueue.capacity);"))
+        XCTAssertEqual(OfflineQueue.capacity, 200)
+    }
+
+    func testServerUUIDRuleIsTheServersAndSdkJsRule() {
+        // RFC 9562: version 1-8, variant 8/9/a/b, 8-4-4-4-12 hex. `UUID(uuidString:)` is looser.
+        let valid = [
+            Fixture.creatorID,
+            "5c4b3a29-1807-4f6e-9d5c-4b3a29180700",
+            "9B8A7C6D-5E4F-4A3B-8C2D-1E0F9A8B7C6D",
+            "00000000-0000-1000-8000-000000000000",
+            "ffffffff-ffff-8fff-bfff-ffffffffffff",
+        ]
+        let invalid = [
+            "", "cr_not_a_uuid",
+            "9b8a7c6d-5e4f-0a3b-8c2d-1e0f9a8b7c6d",   // version 0
+            "9b8a7c6d-5e4f-9a3b-8c2d-1e0f9a8b7c6d",   // version 9
+            "9b8a7c6d-5e4f-4a3b-0c2d-1e0f9a8b7c6d",   // variant 0
+            "9b8a7c6d-5e4f-4a3b-cc2d-1e0f9a8b7c6d",   // variant c
+            "00000000-0000-0000-0000-000000000000",   // nil UUID
+            "9b8a7c6d5e4f4a3b8c2d1e0f9a8b7c6d",       // no hyphens
+            "{9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d}",
+            "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6",    // short
+            "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6dd",  // long
+            "9b8a7c6g-5e4f-4a3b-8c2d-1e0f9a8b7c6d",   // not hex
+            "9b8a7c6d_5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+            " 9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",  // the caller trims
+            "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6\u{e9}",
+        ]
+        for id in valid { XCTAssertTrue(ProoflineInput.isServerUUID(id), id) }
+        for id in invalid { XCTAssertFalse(ProoflineInput.isServerUUID(id), id) }
+        // The looser Foundation parser would have let the server reject these with a 400.
+        XCTAssertNotNil(UUID(uuidString: "9b8a7c6d-5e4f-0a3b-8c2d-1e0f9a8b7c6d"))
+    }
+
+    func testParseLinkReturnsTheClickAndTheInAppPath() {
+        let base = "https://go.example.com/l/fit/sarah/c/Ab3dE5gH7jK9"
+        func link(_ suffix: String) -> ProoflineLink? { URL(string: base + suffix).flatMap(ProoflineLinks.parse) }
+        XCTAssertEqual(link(""), ProoflineLink(clickID: "Ab3dE5gH7jK9", deepLinkPath: nil))
+        XCTAssertEqual(link("?dl=%2Fworkouts%2F42")?.deepLinkPath, "/workouts/42")
+        XCTAssertEqual(link("/?dl=%2Fworkouts%2F42")?.deepLinkPath, "/workouts/42", "trailing slash")
+        XCTAssertEqual(link("?utm_source=ig&dl=%2Fplans%3Ftab%3Dpro%26x%3D1&z=2")?.deepLinkPath, "/plans?tab=pro&x=1")
+        XCTAssertEqual(link("?dl=/workouts/42#top")?.deepLinkPath, "/workouts/42", "unencoded, with a fragment")
+        XCTAssertEqual(link("?dl=%2Fa+b")?.deepLinkPath, "/a+b", "+ is not a space")
+        XCTAssertEqual(link("?dl=%2Fcaf%C3%A9%2F%F0%9F%8F%83")?.deepLinkPath, "/caf\u{e9}/\u{1F3C3}")
+        XCTAssertEqual(link("?dl=%2Ffirst&dl=%2Fsecond")?.deepLinkPath, "/first", "the first wins")
+        XCTAssertEqual(link("?d%6C=%2Fencoded-name")?.deepLinkPath, "/encoded-name")
+
+        // Invalid paths: the click still counts, the path is dropped.
+        let dropped = [
+            "?dl=", "?dl", "?dl=workouts", "?dl=%2F%2Fevil.example%2Fx", "?dl=https%3A%2F%2Fevil.example",
+            "?dl=%2Fa%5Cb", "?dl=%2Fa%0Ab", "?dl=%2Fa%00b", "?dl=%2Fa%7Fb", "?dl=%2Fa%C2%85b",
+            "?dl=%2Fa%E2%80%A8b", "?dl=%2Fa%E2%80%A9b", "?dl=%2Fbad%FF", "?dl=%2Fbad%C3",
+            "?dl=javascript%3Aalert(1)", "?dl=%2F%2F", "?dl=bad&dl=%2Fsecond", "?DL=%2Fupper",
+            "?dl=%2F" + String(repeating: "a", count: 512),
+        ]
+        for suffix in dropped {
+            XCTAssertEqual(link(suffix), ProoflineLink(clickID: "Ab3dE5gH7jK9", deepLinkPath: nil), suffix)
+        }
+        XCTAssertEqual(link("?dl=%2F" + String(repeating: "a", count: 511))?.deepLinkPath?.utf16.count, 512)
+        XCTAssertEqual(link("?dl=%2F")?.deepLinkPath, "/")
+
+        // Not a click link: nothing, whatever the query says.
+        XCTAssertNil(ProoflineLinks.parse(URL(string: "https://go.example.com/l/fit/sarah?dl=%2Fx")!))
+        XCTAssertNil(ProoflineLinks.parse(URL(string: "myapp://go.example.com/l/fit/sarah/c/Ab3dE5gH7jK9?dl=%2Fx")!))
+        XCTAssertEqual(ProoflineLinks.deepLinkParameter, "dl")
+        XCTAssertEqual(ProoflineLinks.maxDeepLinkPathLength, 512)
+    }
+
+    func testDeepLinkPathLengthIsCountedInUTF16LikeTheServer() {
+        // 255 emoji = 510 UTF-16 units + "/" = 511: allowed. 256 emoji = 513: rejected.
+        XCTAssertTrue(ProoflineLinks.isDeepLinkPath("/" + String(repeating: "\u{1F3C3}", count: 255)))
+        XCTAssertFalse(ProoflineLinks.isDeepLinkPath("/" + String(repeating: "\u{1F3C3}", count: 256)))
+        // A combining mark after the slash is still a path that starts with "/" (scalars, not graphemes).
+        XCTAssertTrue(ProoflineLinks.isDeepLinkPath("/\u{301}x"))
+        XCTAssertFalse(ProoflineLinks.isDeepLinkPath(""))
+    }
+
+    func testDeepLinkRulesAreIdenticalToSdkJs() throws {
+        let source = try ModelsContractTests.sdkJsSource("links.ts")
+        XCTAssertTrue(source.contains("export const DEEP_LINK_PARAM = '\(ProoflineLinks.deepLinkParameter)';"))
+        XCTAssertTrue(source.contains("export const MAX_DEEP_LINK_PATH_LENGTH = \(ProoflineLinks.maxDeepLinkPathLength);"))
     }
 
     func testRevenueCatKeysAreIdenticalToSdkJs() throws {
-        let rcURL = ModelsContractTests.typesURL.deletingLastPathComponent().appendingPathComponent("revenuecat.ts")
-        let source = try String(contentsOf: rcURL, encoding: .utf8)
+        let source = try ModelsContractTests.sdkJsSource("revenuecat.ts")
         let keys = [RevenueCatAttributes.endUserId, RevenueCatAttributes.creatorId, RevenueCatAttributes.creatorHandle,
                     RevenueCatAttributes.programId, RevenueCatAttributes.tier, RevenueCatAttributes.code]
         for key in keys {

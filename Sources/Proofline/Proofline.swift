@@ -50,11 +50,7 @@ public enum Proofline {
     @discardableResult
     public static func handle(_ url: URL) -> Bool {
         guard let clickID = ProoflineLinks.clickID(from: url) else { return false }
-        if registry.client?.haltFlag.isDisabled == true { return false }
-        if let client = registry.clientOrBuffer(clickID: clickID, url: url) {
-            Task.detached(priority: .utility) { await client.recordLinkOpen(clickID: clickID, url: url) }
-        }
-        return true
+        return record(clickID: clickID, url: url)
     }
 
     /// Handle a universal-link `NSUserActivity` (`NSUserActivityTypeBrowsingWeb`).
@@ -63,6 +59,45 @@ public enum Proofline {
         guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
               let url = userActivity.webpageURL else { return false }
         return handle(url)
+    }
+
+    /// Like `handle(_:)`, but returns what the link says instead of a `Bool`: the click id and the
+    /// link's in-app path (`deepLinkPath`, from the URL's `dl` parameter) for the app to route on.
+    /// Nil when the URL is not a Proofline click link. The click is recorded exactly as `handle(_:)`
+    /// records it (once per click id); the link is still returned while the remote kill switch is
+    /// on, because routing the user must keep working when attribution is off.
+    ///
+    /// Call one of `handle(_:)` / `handleLink(_:)` per URL, not both. `deepLinkPath` is only known for
+    /// a link that opened the installed app; after an install from the App Store it is nil.
+    ///
+    /// ```swift
+    /// .onOpenURL { url in
+    ///     if let path = Proofline.handleLink(url)?.deepLinkPath { router.open(path) }
+    /// }
+    /// ```
+    @discardableResult
+    public static func handleLink(_ url: URL) -> ProoflineLink? {
+        guard let link = ProoflineLinks.parse(url) else { return nil }
+        record(clickID: link.clickID, url: url)
+        return link
+    }
+
+    /// `handleLink(_:)` for a universal-link `NSUserActivity` (`NSUserActivityTypeBrowsingWeb`).
+    @discardableResult
+    public static func handleLink(_ userActivity: NSUserActivity) -> ProoflineLink? {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else { return nil }
+        return handleLink(url)
+    }
+
+    /// Queue the D-tier session for an opened click link. False while the kill switch is on.
+    @discardableResult
+    private static func record(clickID: String, url: URL) -> Bool {
+        if registry.client?.haltFlag.isDisabled == true { return false }
+        if let client = registry.clientOrBuffer(clickID: clickID, url: url) {
+            Task.detached(priority: .utility) { await client.recordLinkOpen(clickID: clickID, url: url) }
+        }
+        return true
     }
 
     /// Pass a click id your App Clip handed off through your own shared storage (alternative to
@@ -104,8 +139,9 @@ public enum Proofline {
         return await client.submitCode(code, entry: pasted ? .pasted : .typed, openRedemption: openRedemption)
     }
 
-    /// The user confirmed a creator (id from the attribution or a creator list) in a prompt.
-    /// Returns false on failure.
+    /// The user confirmed a creator in a prompt. `creatorID` is a creator UUID, as in
+    /// `suggestCreators(_:)` results or the attribution (surrounding whitespace is ignored); anything
+    /// else returns false without a request. Returns false on failure.
     @discardableResult
     public static func confirmCreator(_ creatorID: String) async -> Bool {
         guard let client = registry.client else { return false }
@@ -129,10 +165,12 @@ public enum Proofline {
         return await client.currentAttribution()
     }
 
-    /// Write the attribution into RevenueCat subscriber attributes. `setAttributes` receives all six
-    /// `proofline_*` keys; a key without a current value is `""`, which RevenueCat treats as "delete
-    /// this attribute", so a previous creator's code or handle does not linger. Pass the dictionary
-    /// to RevenueCat unchanged. Nothing is written while neither the end user nor an attribution is
+    /// Write the attribution into RevenueCat subscriber attributes. `setAttributes` receives the five
+    /// creator-scoped `proofline_*` keys (creator id, handle, program, tier, code); a key without a
+    /// current value is `""` (`RevenueCatAttributes.clearValue`), which RevenueCat treats as "delete
+    /// this attribute", so a previous creator's code or handle does not linger.
+    /// `proofline_end_user_id` is added once the end user is known and is never cleared. Pass the
+    /// dictionary to RevenueCat unchanged. Same update as sdk-js. Nothing is written while neither the end user nor an attribution is
     /// known. Returns the non-empty values written.
     @discardableResult
     public static func syncToRevenueCat(setAttributes: @Sendable ([String: String]) -> Void) async -> [String: String] {
@@ -141,7 +179,7 @@ public enum Proofline {
     }
 
     /// Write the attribution into RevenueCat through a bridge (same update as the closure overload:
-    /// all six keys, `""` meaning "delete"). Returns the non-empty values written.
+    /// `""` meaning "delete"). Returns the non-empty values written.
     @discardableResult
     public static func syncToRevenueCat(_ sink: any RevenueCatAttributeSink) async -> [String: String] {
         guard let client = registry.client else { return [:] }

@@ -126,8 +126,9 @@ public struct SystemURLOpener: URLOpening {
 /// }
 /// ```
 public protocol RevenueCatAttributeSink: Sendable {
-    /// Receives all six `proofline_*` keys. An empty-string value means "clear this attribute"
-    /// (RevenueCat deletes an attribute set to `""`), so pass the dictionary to RevenueCat as is.
+    /// Receives the five creator-scoped `proofline_*` keys, plus `proofline_end_user_id` once the end
+    /// user is known. An empty-string value means "clear this attribute" (RevenueCat deletes an
+    /// attribute set to `""`), so pass the dictionary to RevenueCat as is.
     func setAttributes(_ attributes: [String: String]) async
     /// RevenueCat app user id, sent with `identify` as `revenueCatAppUserId`. Default nil.
     func appUserID() async -> String?

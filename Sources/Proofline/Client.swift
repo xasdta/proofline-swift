@@ -335,8 +335,10 @@ actor ProoflineClient {
         loadIfNeeded()
         guard isActive else { return false }
         if let config = state.config, !config.confirmCreatorEnabled { return false }
+        // The server only accepts creator UUIDs (`confirmRequestSchema.creatorId: z.uuid()`). Same
+        // rule as sdk-js: trim, then require the RFC 9562 form.
         let id = creatorID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard UUID(uuidString: id) != nil else { return false }
+        guard ProoflineInput.isServerUUID(id) else { return false }
         let request = ConfirmRequest(eventId: newID(), installId: state.installId, endUserId: state.endUserId,
                                      creatorId: id, platform: env.platform)
         do throws(ProoflineError) {
@@ -401,12 +403,8 @@ actor ProoflineClient {
         let endUserID = state.endUserId
         let attrs = RevenueCatAttributes.attributes(for: attribution, endUserID: endUserID)
         guard !attrs.isEmpty else { return attrs }
-        var update = RevenueCatAttributes.update(for: attribution, endUserID: endUserID)
-        // An unknown end user (e.g. storage unreadable this launch) is not "no end user": never
-        // clear RevenueCat's end-user link, which ingest uses to tie purchases to the end user.
-        // Same rule as sdk-js `revenueCatAttributeUpdate`.
-        if attrs[RevenueCatAttributes.endUserId] == nil { update.removeValue(forKey: RevenueCatAttributes.endUserId) }
-        await write(update)
+        // `update` leaves the end-user key out while the end user is unknown (it is never cleared).
+        await write(RevenueCatAttributes.update(for: attribution, endUserID: endUserID))
         return attrs
     }
 

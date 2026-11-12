@@ -1,0 +1,46 @@
+/*
+  Proofline SDK: user-facing text of the code-entry views (English, the development language).
+
+  To add a language, copy this file into your app target as <language>.lproj/Proofline.strings and
+  translate the values. The SDK reads your app's "Proofline" table first, then this file.
+  Keep the {creator} and {offer} tokens: they are replaced with the creator's name and the offer.
+*/
+
+/* Placeholder of the code text field. */
+"code_entry.placeholder" = "Creator code";
+
+/* Accessibility label of the code text field (read by VoiceOver; stays when the placeholder is gone). */
+"code_entry.field_label" = "Creator code";
+
+/* Title of the button that submits the typed code. */
+"code_entry.submit" = "Apply";
+
+/* Accessibility label of the progress indicator while the code is being checked. */
+"code_entry.submitting" = "Applying code";
+
+/* The code was accepted. {creator} is the creator's display name. */
+"code_entry.success" = "Code applied: {creator}";
+
+/* The code was accepted and unlocks an offer. {offer} is the offer text, {creator} the creator's display name. */
+"code_entry.success_with_offer" = "{offer} from {creator}";
+
+/* No creator code matches what the user entered. */
+"code_entry.not_found" = "That code wasn't recognised";
+
+/* The code existed but its end date has passed. */
+"code_entry.expired" = "That code has expired";
+
+/* The code has been used as many times as it allows. */
+"code_entry.exhausted" = "That code has reached its limit";
+
+/* The code was withdrawn. */
+"code_entry.revoked" = "That code is no longer valid";
+
+/* The device is offline; the code is kept and sent automatically later. Do not ask the user to retry. */
+"code_entry.offline" = "You're offline. The code will be applied when you're back online.";
+
+/* The code could not be checked (server or input problem). Retrying is fine. */
+"code_entry.failed" = "Couldn't apply the code. Try again.";
+
+/* Accessibility hint of the system paste button. */
+"code_entry.paste_hint" = "Pastes a creator code from the clipboard";

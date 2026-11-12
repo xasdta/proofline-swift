@@ -419,6 +419,23 @@ final class ClientConfirmAndAttributionTests: XCTestCase {
         XCTAssertEqual(count, 2, "invalid ids are not sent")
     }
 
+    func testConfirmCreatorTrimsAndAppliesTheServersUUIDRule() async throws {
+        let h = Harness()
+        let padded = await h.client.confirmCreator("  \(Fixture.creatorID)\n")
+        XCTAssertTrue(padded)
+        let body = try await h.transport.firstRequest(to: "confirm").decode(ConfirmRequest.self)
+        XCTAssertEqual(body.creatorId, Fixture.creatorID, "sent trimmed")
+
+        // Accepted by `UUID(uuidString:)`, rejected by the server's `z.uuid()` and by sdk-js.
+        for id in ["9b8a7c6d-5e4f-0a3b-8c2d-1e0f9a8b7c6d", "9b8a7c6d-5e4f-4a3b-0c2d-1e0f9a8b7c6d",
+                   "9b8a7c6d5e4f4a3b8c2d1e0f9a8b7c6d", ""] {
+            let ok = await h.client.confirmCreator(id)
+            XCTAssertFalse(ok, id)
+        }
+        let count = await h.transport.requests(to: "confirm").count
+        XCTAssertEqual(count, 1, "ids the server would reject are not sent")
+    }
+
     func testConfirmOfflineQueuesAndReturnsFalse() async throws {
         let h = Harness()
         await h.transport.set(override: .failure(.cannotFindHost))
