@@ -35,18 +35,18 @@ await Proofline.syncToRevenueCat { Purchases.shared.attribution.setAttributes($0
 
 ## Install
 
-Swift Package Manager. In Xcode: File → Add Package Dependencies…, then enter the SDK's repository URL. In a `Package.swift`:
+Swift Package Manager. In Xcode: File → Add Package Dependencies…, then enter `https://github.com/xasdta/proofline-swift`. In a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "<the SDK's repository URL>", from: "0.1.0"),
+    .package(url: "https://github.com/xasdta/proofline-swift", from: "0.1.0"),
 ],
 targets: [
-    .target(name: "YourApp", dependencies: [.product(name: "Proofline", package: "<repository name>")]),
+    .target(name: "YourApp", dependencies: [.product(name: "Proofline", package: "proofline-swift")]),
 ]
 ```
 
-The package has no dependencies. Until the SDK has its own repository (see `RELEASING.md`), add it as a local package from `sdks/swift`.
+The package has no dependencies.
 
 ## Deep links
 
